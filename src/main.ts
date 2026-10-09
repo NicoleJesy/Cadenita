@@ -26,6 +26,7 @@ let nombres: Record<Jugador, string> = {
 }
 let relevoPendiente = false
 let cursor = { fila: 0, columna: 0 }
+let tutorialAbierto = false
 
 function escaparHtml(texto: string): string {
   return texto.replace(/[&<>"']/g, (caracter) => {
@@ -82,6 +83,7 @@ function renderizarInicio(): void {
     }
     partida = crearPartida()
     cursor = { fila: 0, columna: 0 }
+    tutorialAbierto = true
     renderizarJuego()
   })
 }
@@ -112,6 +114,15 @@ function obtenerIndicesImpactados(explosiones: Posicion[]): Map<string, number> 
   return impactados
 }
 
+function obtenerLimiteCasilla(fila: number, columna: number): number {
+  let vecinas = 0
+  if (fila > 0) vecinas += 1
+  if (fila < CONFIG.FILAS - 1) vecinas += 1
+  if (columna > 0) vecinas += 1
+  if (columna < CONFIG.COLUMNAS - 1) vecinas += 1
+  return vecinas
+}
+
 function crearTablero(explosiones: Posicion[]): string {
   const impactados = obtenerIndicesImpactados(explosiones)
   const tiempoTotal = Math.min(900, explosiones.length * 45)
@@ -134,6 +145,12 @@ function crearTablero(explosiones: Posicion[]): string {
           if (casilla.dueno === CONFIG.JUGADOR_2) clases.push('casilla-roja')
           if (casilla.dueno === null) clases.push('casilla-neutra')
           if (casilla.cargas > 0) clases.push('casilla-cargada')
+          if (
+            casilla.cargas ===
+            obtenerLimiteCasilla(indiceFila, indiceColumna) - 1
+          ) {
+            clases.push('critical')
+          }
           if (esSeleccionada) clases.push('casilla-seleccionada')
           if (indiceExplosion >= 0) clases.push('casilla-explosion')
           else if (indiceImpacto !== undefined) clases.push('casilla-impacto')
@@ -154,7 +171,7 @@ function crearTablero(explosiones: Posicion[]): string {
               aria-current="${esSeleccionada ? 'true' : 'false'}"
               tabindex="${esSeleccionada ? '0' : '-1'}"
               style="--profundidad: ${profundidad}; --altura: ${profundidad * 3}px; ${retraso}"
-              ${relevoPendiente || partida.terminada ? 'disabled' : ''}
+              ${relevoPendiente || partida.terminada || tutorialAbierto ? 'disabled' : ''}
             >
               <span class="cargas" aria-hidden="true">${casilla.cargas > 0 ? casilla.cargas : ''}</span>
               <span class="solo-lectores">Fila ${indiceFila + 1}, columna ${indiceColumna + 1}</span>
@@ -204,13 +221,45 @@ function renderizarJuego(explosiones: Posicion[] = []): void {
         </div>
       </div>`
     : ''
+  const modalTutorial = tutorialAbierto
+    ? `<div class="cortina tutorial" role="dialog" aria-modal="true" aria-labelledby="titulo-tutorial" aria-describedby="descripcion-tutorial">
+        <section class="panel-cortina panel-tutorial">
+          <button class="cerrar-tutorial" id="cerrar-tutorial" type="button" aria-label="Cerrar tutorial">×</button>
+          <span class="icono-tutorial" aria-hidden="true">?</span>
+          <p class="sobretitulo">En tres pasos</p>
+          <h2 id="titulo-tutorial">Cómo jugar</h2>
+          <p class="descripcion-tutorial" id="descripcion-tutorial">Carga tus casillas y deja que la reacción conquiste la red.</p>
+          <ol class="pasos-tutorial">
+            <li>
+              <span class="numero-paso">01</span>
+              <span class="mini-casillas mini-un-carga" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span>Toca casillas vacías o de tu color para agregar cargas.</span>
+            </li>
+            <li>
+              <span class="numero-paso">02</span>
+              <span class="mini-casillas mini-cadena" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span>Cuando una casilla se llena, explota y distribuye sus cargas a los vecinos.</span>
+            </li>
+            <li>
+              <span class="numero-paso">03</span>
+              <span class="mini-limites" aria-hidden="true"><i>2</i><i>3</i><i>4</i></span>
+              <span>Límites de explosión: esquinas = 2, bordes = 3, centro = 4.</span>
+            </li>
+          </ol>
+          <button class="boton boton-principal" id="entendido-tutorial" type="button">¡Entendido, a jugar!</button>
+        </section>
+      </div>`
+    : ''
 
   aplicacion.innerHTML = `
     <main class="pantalla pantalla-juego">
       <header class="barra-superior">
         <span class="logo-mini" aria-label="Cadenita">C<span>✳</span></span>
         <p class="estado-partida">${partida.terminada ? 'Partida terminada' : `Turno de <strong class="${jugador === CONFIG.JUGADOR_1 ? 'texto-azul' : 'texto-rojo'}">${nombreDe(jugador)}</strong>`}</p>
-        <button class="boton-reinicio" id="reiniciar" type="button" aria-label="Reiniciar partida" title="Reiniciar partida">↻</button>
+        <div class="acciones-superiores">
+          <button class="boton-ayuda" id="ayuda" type="button" aria-label="Abrir tutorial" title="Cómo jugar" ${relevoPendiente || partida.terminada ? 'disabled' : ''}>?</button>
+          <button class="boton-reinicio" id="reiniciar" type="button" aria-label="Reiniciar partida" title="Reiniciar partida">↻</button>
+        </div>
       </header>
       <section class="marcador" aria-label="Marcador de casillas">
         <div class="jugador jugador-azul ${jugador === CONFIG.JUGADOR_1 && !partida.terminada ? 'jugador-activo' : ''}">
@@ -241,6 +290,7 @@ function renderizarJuego(explosiones: Posicion[] = []): void {
     </main>
     ${mensajeTurno}
     ${mensajeFinal}
+    ${modalTutorial}
   `
 
   const tablero = aplicacion.querySelector<HTMLDivElement>('#tablero')
@@ -288,6 +338,30 @@ function renderizarJuego(explosiones: Posicion[] = []): void {
       )
       ?.focus()
   })
+
+  aplicacion
+    .querySelector<HTMLButtonElement>('#ayuda')
+    ?.addEventListener('click', () => {
+      tutorialAbierto = true
+      renderizarJuego()
+      aplicacion
+        .querySelector<HTMLButtonElement>('#entendido-tutorial')
+        ?.focus()
+    })
+
+  const cerrarTutorial = (): void => {
+    tutorialAbierto = false
+    renderizarJuego()
+    aplicacion.querySelector<HTMLButtonElement>('#ayuda')?.focus()
+  }
+
+  aplicacion
+    .querySelector<HTMLButtonElement>('#cerrar-tutorial')
+    ?.addEventListener('click', cerrarTutorial)
+
+  aplicacion
+    .querySelector<HTMLButtonElement>('#entendido-tutorial')
+    ?.addEventListener('click', cerrarTutorial)
 
   aplicacion
     .querySelector<HTMLButtonElement>('#continuar-turno')
