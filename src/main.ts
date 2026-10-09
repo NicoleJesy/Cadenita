@@ -352,7 +352,11 @@ function renderizarJuego(explosiones: Posicion[] = []): void {
   const cerrarTutorial = (): void => {
     tutorialAbierto = false
     renderizarJuego()
-    aplicacion.querySelector<HTMLButtonElement>('#ayuda')?.focus()
+    aplicacion
+      .querySelector<HTMLButtonElement>(
+        `[data-fila="${cursor.fila}"][data-columna="${cursor.columna}"]`,
+      )
+      ?.focus()
   }
 
   aplicacion
