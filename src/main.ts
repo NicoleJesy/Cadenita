@@ -27,6 +27,9 @@ let nombres: Record<Jugador, string> = {
 let relevoPendiente = false
 let cursor = { fila: 0, columna: 0 }
 let tutorialAbierto = false
+let toquesTotales = 0
+let mensajeRapidoAbierto = false
+let modalPausaAbierto = false
 
 function escaparHtml(texto: string): string {
   return texto.replace(/[&<>"']/g, (caracter) => {
@@ -52,22 +55,33 @@ function vibrar(patron: number | number[]): void {
 function renderizarInicio(): void {
   aplicacion.innerHTML = `
     <main class="pantalla pantalla-inicio">
-      <div class="marca" aria-hidden="true"><span>✳</span></div>
-      <p class="sobretitulo">Duelo local · 2 jugadores</p>
-      <h1>Cadenita</h1>
-      <p class="bajada">Una carga puede encender toda la red.</p>
-      <form class="formulario-nombres" id="formulario-nombres">
-        <label class="campo-nombre campo-azul">
-          <span>Jugador azul</span>
-          <input name="azul" type="text" autocomplete="off" placeholder="Jugador 1">
-        </label>
-        <label class="campo-nombre campo-rojo">
-          <span>Jugador rojo</span>
-          <input name="rojo" type="text" autocomplete="off" placeholder="Jugador 2">
-        </label>
-        <button class="boton boton-principal" type="submit">Empezar partida <span aria-hidden="true">↗</span></button>
-      </form>
-      <p class="nota-inicio">6 × 5 casillas <span aria-hidden="true">·</span> Pasa el teléfono en cada turno</p>
+      <div class="hero-start">
+        <div class="marca" aria-hidden="true"><span>✳</span></div>
+        <p class="sobretitulo">Duelo local · 2 jugadores</p>
+        <h1>Cadenita</h1>
+        <p class="bajada">Una carga puede encender toda la red.</p>
+      </div>
+
+      <div class="panel-start">
+        <form class="formulario-nombres" id="formulario-nombres">
+          <label class="campo-nombre campo-azul">
+            <span>Jugador azul</span>
+            <input name="azul" type="text" autocomplete="off" placeholder="Jugador 1">
+          </label>
+          <label class="campo-nombre campo-rojo">
+            <span>Jugador rojo</span>
+            <input name="rojo" type="text" autocomplete="off" placeholder="Jugador 2">
+          </label>
+          <button class="boton boton-principal" type="submit">Empezar partida <span aria-hidden="true">↗</span></button>
+        </form>
+        <div class="meta-start">
+          <span>6 × 5</span>
+          <span>•</span>
+          <span>Tablero</span>
+          <span>•</span>
+          <span>Todo en un teléfono</span>
+        </div>
+      </div>
     </main>
   `
 
@@ -82,6 +96,9 @@ function renderizarInicio(): void {
       [CONFIG.JUGADOR_2]: String(datos.get('rojo')).trim() || 'Jugador 2',
     }
     partida = crearPartida()
+    toquesTotales = 0
+    mensajeRapidoAbierto = false
+    modalPausaAbierto = false
     cursor = { fila: 0, columna: 0 }
     tutorialAbierto = true
     renderizarJuego()
@@ -171,7 +188,7 @@ function crearTablero(explosiones: Posicion[]): string {
               aria-current="${esSeleccionada ? 'true' : 'false'}"
               tabindex="${esSeleccionada ? '0' : '-1'}"
               style="--profundidad: ${profundidad}; --altura: ${profundidad * 3}px; ${retraso}"
-              ${relevoPendiente || partida.terminada || tutorialAbierto ? 'disabled' : ''}
+              ${relevoPendiente || partida.terminada || tutorialAbierto || mensajeRapidoAbierto || modalPausaAbierto ? 'disabled' : ''}
             >
               <span class="cargas" aria-hidden="true">${casilla.cargas > 0 ? casilla.cargas : ''}</span>
               <span class="solo-lectores">Fila ${indiceFila + 1}, columna ${indiceColumna + 1}</span>
@@ -218,6 +235,32 @@ function renderizarJuego(explosiones: Posicion[] = []): void {
           <h2 id="titulo-final">¡Colapso en cadena!</h2>
           <p>${textoFinal()}</p>
           <button class="boton boton-principal" id="volver-a-jugar" type="button">Volver a jugar</button>
+        </div>
+      </div>`
+    : ''
+  const mensajeRapido = mensajeRapidoAbierto
+    ? `<div class="cortina mini-cortina" role="dialog" aria-modal="true" aria-live="polite">
+        <div class="panel-cortina panel-mensaje">
+          <span class="icono-mensaje" aria-hidden="true">⚡</span>
+          <p class="sobretitulo">Ritmo</p>
+          <h2>¡Qué rápido es!</h2>
+          <p>Ya tocaste 10 casillas y la cadena está prendiendo fuego.</p>
+          <button class="boton boton-principal" id="cerrar-mensaje-rapido" type="button">Seguir jugando</button>
+        </div>
+      </div>`
+    : ''
+  const modalPausa = modalPausaAbierto
+    ? `<div class="cortina" role="dialog" aria-modal="true" aria-labelledby="titulo-pausa">
+        <div class="panel-cortina panel-pausa">
+          <span class="icono-pausa" aria-hidden="true">⟲</span>
+          <p class="sobretitulo">Pausa activa</p>
+          <h2 id="titulo-pausa">¿Qué querés hacer?</h2>
+          <p>Ya llegaste a los 30 toques. Podés seguir con la partida, reiniciar desde cero o salir del juego.</p>
+          <div class="acciones-pausa">
+            <button class="boton boton-principal boton-secundario" id="continuar-partida" type="button">Continuar</button>
+            <button class="boton boton-principal boton-alternativo" id="reiniciar-pausa" type="button">Reiniciar</button>
+            <button class="boton boton-principal boton-terciario" id="salir-juego" type="button">Salir del juego</button>
+          </div>
         </div>
       </div>`
     : ''
@@ -290,6 +333,8 @@ function renderizarJuego(explosiones: Posicion[] = []): void {
     </main>
     ${mensajeTurno}
     ${mensajeFinal}
+    ${mensajeRapido}
+    ${modalPausa}
     ${modalTutorial}
   `
 
@@ -300,6 +345,15 @@ function renderizarJuego(explosiones: Posicion[] = []): void {
       const fila = Number(boton.dataset.fila)
       const columna = Number(boton.dataset.columna)
       if (!tocarCasilla(partida, fila, columna)) return
+
+      toquesTotales += 1
+      if (toquesTotales === 10) {
+        mensajeRapidoAbierto = true
+      }
+      if (toquesTotales === 30 && !partida.terminada) {
+        mensajeRapidoAbierto = false
+        modalPausaAbierto = true
+      }
 
       cursor = { fila, columna }
       vibrar(partida.explosionesUltimoTurno > 0 ? [8, 18, 45] : 10)
@@ -368,6 +422,45 @@ function renderizarJuego(explosiones: Posicion[] = []): void {
     ?.addEventListener('click', cerrarTutorial)
 
   aplicacion
+    .querySelector<HTMLButtonElement>('#cerrar-mensaje-rapido')
+    ?.addEventListener('click', () => {
+      mensajeRapidoAbierto = false
+      renderizarJuego()
+    })
+
+  aplicacion
+    .querySelector<HTMLButtonElement>('#continuar-partida')
+    ?.addEventListener('click', () => {
+      modalPausaAbierto = false
+      renderizarJuego()
+    })
+
+  aplicacion
+    .querySelector<HTMLButtonElement>('#reiniciar-pausa')
+    ?.addEventListener('click', () => {
+      reiniciarPartida(partida)
+      toquesTotales = 0
+      mensajeRapidoAbierto = false
+      modalPausaAbierto = false
+      cursor = { fila: 0, columna: 0 }
+      relevoPendiente = false
+      renderizarJuego()
+    })
+
+  aplicacion
+    .querySelector<HTMLButtonElement>('#salir-juego')
+    ?.addEventListener('click', () => {
+      partida = crearPartida()
+      toquesTotales = 0
+      mensajeRapidoAbierto = false
+      modalPausaAbierto = false
+      tutorialAbierto = false
+      cursor = { fila: 0, columna: 0 }
+      relevoPendiente = false
+      renderizarInicio()
+    })
+
+  aplicacion
     .querySelector<HTMLButtonElement>('#continuar-turno')
     ?.addEventListener('click', () => {
       relevoPendiente = false
@@ -383,6 +476,9 @@ function renderizarJuego(explosiones: Posicion[] = []): void {
     .querySelector<HTMLButtonElement>('#reiniciar')
     ?.addEventListener('click', () => {
       reiniciarPartida(partida)
+      toquesTotales = 0
+      mensajeRapidoAbierto = false
+      modalPausaAbierto = false
       cursor = { fila: 0, columna: 0 }
       relevoPendiente = false
       renderizarJuego()
@@ -392,6 +488,9 @@ function renderizarJuego(explosiones: Posicion[] = []): void {
     .querySelector<HTMLButtonElement>('#volver-a-jugar')
     ?.addEventListener('click', () => {
       reiniciarPartida(partida)
+      toquesTotales = 0
+      mensajeRapidoAbierto = false
+      modalPausaAbierto = false
       cursor = { fila: 0, columna: 0 }
       relevoPendiente = false
       renderizarJuego()
